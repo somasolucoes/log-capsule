@@ -13,11 +13,15 @@ type
     function GetLogDirectory: string;
     function GetLogFileName: string;
     function GetFileSize(AFileNameWithPath: string): Int64;
+  protected
+    class var Lock: TMultiReadExclusiveWriteSynchronizer;
   public
     property LogDirectory: string read GetLogDirectory;
     property LogFileName: string read GetLogFileName;
     procedure Generate(AText: string);
     constructor Create(AFileNameWithPath: string = ''; AMaxFileSize: Integer = LOG_STRATEGY_TEXT_MAX_FILE_SIZE);
+    class constructor Create;
+    class destructor Destroy;
   end;
 
 implementation
@@ -26,6 +30,17 @@ uses
   System.StrUtils, Math, System.IOUtils;
 
 { TLogStrategyTextFile }
+
+class constructor TLogStrategyTextFile.Create;
+begin
+  Lock := TMultiReadExclusiveWriteSynchronizer.Create;
+end;
+
+class destructor TLogStrategyTextFile.Destroy;
+begin
+  Lock.Free;
+  inherited;
+end;
 
 constructor TLogStrategyTextFile.Create(AFileNameWithPath: string; AMaxFileSize: Integer);
 begin
@@ -45,6 +60,7 @@ var
 begin
   TDirectory.CreateDirectory(Self.LogDirectory);
   AssignFile(LFileHandle, Self.FFileNameWithPath);
+  Lock.BeginWrite;
   try
     LExceededSizeLimit := (GetFileSize(Self.FFileNameWithPath) > Self.FMaxFileSize);
     if ((not FileExists(Self.FFileNameWithPath)) or LExceededSizeLimit) then
@@ -53,6 +69,7 @@ begin
       Append(LFileHandle);
     WriteLn(LFileHandle, AText);
   finally
+    Lock.EndWrite;
     Flush(LFileHandle);
     CloseFile(LFileHandle);
   end;
